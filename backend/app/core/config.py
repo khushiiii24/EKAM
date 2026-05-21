@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     
     FIREBASE_CREDENTIALS_PATH:str = "ekam-aaa95-firebase-adminsdk-fbsvc-7f4e06ba47.json"
     MOCK_AUTH: bool = False
+    GROQ_API_KEY: str = ""
     
     @property
     def SQLALCHEMY_DATABASE_URI(self) -> str:
