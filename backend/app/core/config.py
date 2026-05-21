@@ -14,9 +14,11 @@ class Settings(BaseSettings):
     POSTGRES_PORT: str 
     DATABASE_URL: str
     
-    FIREBASE_CREDENTIALS_PATH:str = "ekam-aaa95-firebase-adminsdk-fbsvc-7f4e06ba47.json"
-    MOCK_AUTH: bool = False
-    GROQ_API_KEY: str = ""
+    FIREBASE_CREDENTIALS_PATH:str
+    MOCK_AUTH: bool
+     
+    GROQ_API_KEY: str 
+    GROQ_MODEL: str
     
     @property
     def SQLALCHEMY_DATABASE_URI(self) -> str:

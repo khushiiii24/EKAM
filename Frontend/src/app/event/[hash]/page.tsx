@@ -32,7 +32,7 @@ export default function EventDetailPage({ params }: { params: Promise<{ hash: st
   useEffect(() => {
     aiApi.getEventByHash(hash)
       .then((data: Record<string, any>) => setApiEvent(data))
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => setLoadingApi(false));
   }, [hash]);
 

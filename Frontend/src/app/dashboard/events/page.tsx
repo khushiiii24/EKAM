@@ -70,10 +70,10 @@ export default function EventsPage() {
   useEffect(() => {
     aiApi.getDeployedEvents()
       .then((data: any[]) => setDeployedEvents(data.map(mapApiConfigToEvent)))
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
-  const allEvents = [...deployedEvents, ...mockEvents];
+  const allEvents = [...deployedEvents];
 
   const filtered = allEvents.filter((e) => {
     const matchSearch = e.name.toLowerCase().includes(search.toLowerCase());
