@@ -32,6 +32,14 @@ class AuthContext:
     def can_access_event(self, event_id: str | UUID) -> bool:
         if self.actor_type in ["admin", "organizer"]:
             return True
+        # Firebase-authenticated participants/judges are cross-event users —
+        # their JWT carries no event_id. Allow the access gate to pass; the
+        # service layer is responsible for filtering returned rows by
+        # event_id when that matters (e.g. listing participants of an event).
+        # Only OTP/magic-link sessions carry a non-null event_id, and those
+        # must match the requested event.
+        if not self.event_id:
+            return True
         return str(self.event_id) == str(event_id)
 
     def can_manage_entity(self, entity_id: str | UUID) -> bool:

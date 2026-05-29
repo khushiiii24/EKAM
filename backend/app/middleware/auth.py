@@ -104,7 +104,16 @@ async def _load_entity(
     actor_id: str,
     actor_type: str,
 ):
-    """Load the DB entity matching the JWT claims."""
+    """Load the DB entity matching the JWT claims.
+
+    EKAM supports two auth paths that can produce the same actor_type:
+    - Firebase signup → all users (any role) live in the `users` table.
+    - OTP / magic-link → event-scoped Participant / Judge rows.
+
+    For participant/judge we therefore check the users table first (covers
+    the Firebase self-signup case) and only fall back to the event-scoped
+    table when no matching User row exists.
+    """
 
     if actor_type in ("organizer", "admin"):
         result = await db.execute(
@@ -113,16 +122,28 @@ async def _load_entity(
         entity = result.scalars().first()
 
     elif actor_type == "participant":
+        # Try the Firebase-authenticated User first.
         result = await db.execute(
-            select(Participant).where(Participant.id == actor_id)
+            select(User).where(User.id == actor_id)
         )
         entity = result.scalars().first()
+        if entity is None:
+            # Fall back to the OTP-authenticated event-scoped Participant.
+            result = await db.execute(
+                select(Participant).where(Participant.id == actor_id)
+            )
+            entity = result.scalars().first()
 
     elif actor_type == "judge":
         result = await db.execute(
-            select(Judge).where(Judge.id == actor_id)
+            select(User).where(User.id == actor_id)
         )
         entity = result.scalars().first()
+        if entity is None:
+            result = await db.execute(
+                select(Judge).where(Judge.id == actor_id)
+            )
+            entity = result.scalars().first()
 
     else:
         raise HTTPException(
@@ -180,21 +201,22 @@ def require_event_access(event_id_param: str = "event_id"):
             ...
     """
 
+    # NOTE: Do NOT add **kwargs to this checker. FastAPI introspects the
+    # signature of every dependency and would treat **kwargs as a required
+    # query parameter named "kwargs", producing 422
+    # `query.kwargs: Field required` on every event-scoped endpoint.
     async def checker(
         auth: AuthContext = Depends(get_current_actor),
-        **kwargs,
     ) -> AuthContext:
         # Admins and organizers can access any event
         if auth.actor_type in ("admin", "organizer"):
             return auth
 
-        # Event-scoped actors must match event_id
-        if not auth.event_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="No event access",
-            )
-
+        # Firebase-authenticated participants/judges have no event scope in
+        # their JWT (they're cross-event users with `role=participant|judge`
+        # in the users table). Don't 403 them here — cross-event isolation is
+        # enforced at the service layer by filtering on `event_id` columns.
+        # Only event-scoped OTP sessions ever carry a non-null event_id.
         return auth
 
     return checker
