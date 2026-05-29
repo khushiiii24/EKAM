@@ -66,25 +66,50 @@ async def upload_participant_csv(
     "/register",
     response_model=Participant,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_actor_type(["organizer"]))]
+    # Open to any authenticated actor:
+    # - Organizers/admins register participants on their behalf
+    # - Participants self-register for an event from the participant UI
+    dependencies=[
+        Depends(require_actor_type(["organizer", "participant"]))
+    ],
 )
 async def register_participant(
     participant_in: ParticipantCreate,
-    auth: AuthContext = Depends(require_actor_type(["organizer"])),
-    db: AsyncSession = Depends(get_db)
+    auth: AuthContext = Depends(
+        require_actor_type(["organizer", "participant"])
+    ),
+    db: AsyncSession = Depends(get_db),
 ):
-    """Register a single participant manually."""
-    if not auth.can_access_event(str(participant_in.event_id)):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No event access"
-        )
-        
-    # auth.entity is the User for organizers
+    """Register a single participant.
+
+    Organizers can register anyone; participants can only register
+    themselves (the body's email must match the JWT identity).
+    """
+    if auth.actor_type == "participant":
+        # A participant can only self-register. The User entity carries the
+        # authoritative email; reject if the body claims a different identity.
+        user_email = getattr(auth.entity, "email", None)
+        body_email = participant_in.email
+        if user_email and body_email and user_email.lower() != body_email.lower():
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    "Participants may only register themselves "
+                    "(email must match the signed-in account)."
+                ),
+            )
+    else:
+        # Organizers must own the event they're registering people into.
+        if not auth.can_access_event(str(participant_in.event_id)):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No event access",
+            )
+
     return await register_participant_service(
         db,
         participant_in,
-        auth.entity
+        auth.entity,
     )
 
 

@@ -4,7 +4,9 @@ EKAM Auth Router
 Handles all authentication endpoints.
 """
 
-from fastapi import APIRouter, Depends, Request
+import traceback
+
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -50,27 +52,42 @@ router = APIRouter(
 @router.post("/login", response_model=LoginResponse)
 async def login(
     request: Request,
-    body: _LoginBody = None,
+    body: _LoginBody | None = None,
     token_data: dict = Depends(verify_firebase_only),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """
-    POST /auth/login — frontend-compatible organizer login.
-    Send the Firebase ID token as Authorization: Bearer <token>.
-    Optionally include { name, role } in the JSON body (used during signup).
-    Returns EKAM JWT + user profile fields.
+    POST /auth/login — frontend-compatible login for any role.
+
+    - Send the Firebase ID token as Authorization: Bearer <token>.
+    - Optionally include { name, role } in the JSON body (used during signup
+      to pick the user's role; allowed values: organizer, participant, judge).
+    - Returns an EKAM JWT plus the user profile (name, email, role, ...).
     """
     ip_address = request.client.host if request.client else None
     user_agent = request.headers.get("user-agent")
     display_name = body.name if body else None
+    role = body.role if body else None
 
-    return await login_with_profile_service(
-        db=db,
-        token_data=token_data,
-        ip_address=ip_address,
-        user_agent=user_agent,
-        display_name=display_name,
-    )
+    try:
+        return await login_with_profile_service(
+            db=db,
+            token_data=token_data,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            display_name=display_name,
+            role=role,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Surface the exact failure to the client so the toast tells us why
+        # "failed to fetch" happened, instead of swallowing it as a 500.
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"login failed: {type(e).__name__}: {e}",
+        )
 
 
 @router.post("/firebase-login", response_model=TokenResponse)
@@ -84,9 +101,6 @@ async def firebase_login(
     The ID token must be sent in the Authorization header as Bearer token.
     This also creates a JWT session.
     """
-    import traceback
-    from fastapi import HTTPException
-
     try:
         # 1. Sync Firebase user to local DB
         user = await login_service(db, token_data)

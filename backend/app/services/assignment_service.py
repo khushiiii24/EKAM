@@ -248,7 +248,10 @@ async def assign_team_member_service(db: AsyncSession, member_data):
     member = TeamMember(**member_data.model_dump())
     db.add(member)
     await db.commit()
-    await db.refresh(member)
+    # TeamMemberResponse declares a nested `participant` field — load it
+    # eagerly so Pydantic can serialize the response without lazy-loading
+    # outside the async session (MissingGreenlet).
+    await db.refresh(member, attribute_names=["participant"])
     return member
 
 
