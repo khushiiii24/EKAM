@@ -1,7 +1,5 @@
 # EKAM — Autonomous Event Operating System
 
-> "Describe any event in plain English. EKAM builds the workflow, handles registrations, forms teams, coordinates judging, detects anomalies, and publishes results — all autonomously."
-<<<<<<< HEAD
 
 ## What is EKAM?
 
