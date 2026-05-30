@@ -34,21 +34,50 @@ from app.services.judge_auth_service import find_judge_by_email_and_hash
 # ORGANIZER / ADMIN (FIREBASE)
 # =========================================================
 
+# Roles a self-signup is allowed to assert. `admin` is intentionally excluded
+# so a client can't escalate to admin via the signup body.
+_SELF_SIGNUP_ROLES = {
+    UserRole.organizer,
+    UserRole.participant,
+    UserRole.judge,
+}
+
+
+def _coerce_role(role: str | None) -> UserRole | None:
+    """Map a string from the request body to a UserRole. Returns None if the
+    value is missing, unknown, or admin (which is forbidden for self-signup)."""
+    if not role:
+        return None
+    try:
+        candidate = UserRole(role)
+    except ValueError:
+        return None
+    if candidate not in _SELF_SIGNUP_ROLES:
+        return None
+    return candidate
+
+
 async def login_with_profile_service(
     db: AsyncSession,
     token_data: dict,
     ip_address: str | None = None,
     user_agent: str | None = None,
     display_name: str | None = None,
+    role: str | None = None,
 ) -> Dict[str, Any]:
     """
-    Handle organizer login and return EKAM token merged with user profile.
-    Used by the /auth/login frontend-facing endpoint.
+    Frontend-facing organizer/participant/judge login via Firebase.
+    Returns EKAM JWT merged with the user profile fields.
     """
     if display_name and not token_data.get("name"):
         token_data = {**token_data, "name": display_name}
 
-    user = await login_service(db, token_data)
+    user = await login_service(
+        db,
+        token_data,
+        requested_name=display_name,
+        requested_role=_coerce_role(role),
+    )
 
     session = await create_session(
         db=db,
@@ -69,13 +98,16 @@ async def login_with_profile_service(
 
 async def login_service(
     db: AsyncSession,
-    token_data: dict
+    token_data: dict,
+    requested_name: str | None = None,
+    requested_role: UserRole | None = None,
 ) -> User:
     """Handle Organizer/Admin login via Firebase ID token."""
 
     uid = token_data.get("uid")
     email = token_data.get("email") or ""
     firebase_name = token_data.get("name") or token_data.get("display_name")
+    chosen_name = requested_name or firebase_name
 
     # Primary lookup: by firebase_uid
     result = await db.execute(select(User).where(User.firebase_uid == uid))
@@ -95,12 +127,24 @@ async def login_service(
             user = User(
                 firebase_uid=uid,
                 email=email,
-                name=firebase_name or email.split("@")[0],
+                name=chosen_name or email.split("@")[0],
                 role=UserRole.organizer,
-                last_login=datetime.now(timezone.utc)
+                last_login=datetime.now(timezone.utc),
             )
             db.add(user)
     else:
+        # Update display name on first real value (Google often only gives
+        # us a name after the first login round-trip).
+        if chosen_name and not user.name:
+            user.name = chosen_name
+        # Honor a role change as long as we're not demoting an admin and
+        # the requested role is itself a self-signup-allowed role.
+        if (
+            requested_role
+            and requested_role in _SELF_SIGNUP_ROLES
+            and user.role != UserRole.admin
+        ):
+            user.role = requested_role
         user.last_login = datetime.now(timezone.utc)
 
     await db.commit()

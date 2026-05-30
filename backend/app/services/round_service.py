@@ -1,3 +1,7 @@
+"""
+EKAM Round Service
+"""
+
 from fastapi import HTTPException, status
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession

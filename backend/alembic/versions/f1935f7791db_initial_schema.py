@@ -27,7 +27,7 @@ def upgrade() -> None:
     sa.Column('email', sa.String(), nullable=False),
     sa.Column('name', sa.String(), nullable=False),
     sa.Column('organization', sa.String(), nullable=True),
-    sa.Column('role', sa.Enum('organizer', 'admin', name='userrole'), nullable=False),
+    sa.Column('role', sa.Enum('organizer', 'admin', 'judge', 'participant', name='userrole'), nullable=False),
     sa.Column('is_active', sa.Boolean(), nullable=True),
     sa.Column('last_login', sa.DateTime(timezone=True), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),

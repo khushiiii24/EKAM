@@ -20,26 +20,25 @@ class TeamUpdate(BaseModel):
     theme_id: Optional[UUID] = None
 
 
-class TeamResponse(TeamBase):
-    id: UUID
-
-    event_id: UUID
-    theme_id: Optional[UUID]
-
-    created_at: datetime
-
-    members: List["TeamMemberResponse"] = []
-
-    class Config:
-        from_attributes = True
-
-
 # -------------------- TEAM MEMBER --------------------
 
 class TeamMemberCreate(BaseModel):
     team_id: UUID
     participant_id: UUID
     is_leader: bool = False
+
+
+# A compact participant view used inside TeamMemberResponse so the frontend
+# can render member names without an extra round-trip per row.
+class _ParticipantInMember(BaseModel):
+    id: UUID
+    name: str
+    email: str
+    institution: Optional[str] = None
+    skills: List[str] = []
+
+    class Config:
+        from_attributes = True
 
 
 class TeamMemberResponse(BaseModel):
@@ -52,11 +51,27 @@ class TeamMemberResponse(BaseModel):
 
     joined_at: datetime
 
+    participant: Optional[_ParticipantInMember] = None
+
     class Config:
         from_attributes = True
 
+
+class TeamResponse(TeamBase):
+    id: UUID
+
+    event_id: UUID
+    theme_id: Optional[UUID]
+
+    created_at: datetime
+
+    # Eager-loaded by the team service. Empty list when there are no members
+    # yet (not None) so the frontend can always do `team.members.length`.
+    members: List[TeamMemberResponse] = []
+
+    class Config:
+        from_attributes = True
+
+
 Team = TeamResponse
 TeamMember = TeamMemberResponse
-
-# Resolve forward reference — TeamResponse.members uses TeamMemberResponse
-TeamResponse.model_rebuild()

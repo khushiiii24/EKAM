@@ -49,8 +49,9 @@ export function EventStatusBadge({ status }: { status: EventStatus }) {
     active: "success",
     completed: "info",
     cancelled: "danger",
+    archived: "default",
   };
-  return <Badge variant={variantMap[status]}>{status}</Badge>;
+  return <Badge variant={variantMap[status] ?? "default"}>{status}</Badge>;
 }
 
 // Helper function for event stage badges
@@ -61,6 +62,7 @@ export function EventStageBadge({ stage }: { stage: EventStage }) {
     submission: "warning",
     evaluation: "warning",
     results: "success",
+    completed: "info",
   };
   const labelMap: Record<EventStage, string> = {
     registration: "Registration",
@@ -68,9 +70,10 @@ export function EventStageBadge({ stage }: { stage: EventStage }) {
     submission: "Submission",
     evaluation: "Evaluation",
     results: "Results",
+    completed: "Completed",
   };
   return (
-    <Badge variant={variantMap[stage]}>{labelMap[stage]}</Badge>
+    <Badge variant={variantMap[stage] ?? "default"}>{labelMap[stage] ?? stage}</Badge>
   );
 }
 
@@ -81,5 +84,5 @@ export function RoundStatusBadge({ status }: { status: RoundStatus }) {
     active: "success",
     completed: "info",
   };
-  return <Badge variant={variantMap[status]}>{status}</Badge>;
+  return <Badge variant={variantMap[status] ?? "default"}>{status}</Badge>;
 }

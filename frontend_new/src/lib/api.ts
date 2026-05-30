@@ -8,6 +8,10 @@ import type {
   TeamMember,
   Judge,
   JudgeAssignment,
+  ApprovalRequest,
+  ApprovalActionBody,
+  Notification,
+  Anomaly,
   Submission,
   Evaluation,
   Report,
@@ -135,48 +139,6 @@ async function apiFetch<T>(
     return {} as T;
   }
 
-  return response.json() as Promise<T>;
-}
-
-// ─── Multipart Form Fetch (for file uploads) ──────────────────────────────────
-
-async function apiFetchForm<T>(path: string, formData: FormData): Promise<T> {
-  const ekam = getEkamToken();
-  const headers: HeadersInit = {};
-  if (ekam) {
-    headers["Authorization"] = `Bearer ${ekam}`;
-  } else {
-    const user = auth.currentUser;
-    if (user) {
-      try {
-        const token = await user.getIdToken();
-        headers["Authorization"] = `Bearer ${token}`;
-      } catch {}
-    }
-  }
-  const response = await fetch(`${API_BASE}${path}`, {
-    method: "POST",
-    headers,
-    body: formData,
-  });
-  if (!response.ok) {
-    let errorMessage = `API Error: ${response.status}`;
-    try {
-      const errorData = (await response.json()) as { detail?: unknown };
-      const d = errorData.detail;
-      if (typeof d === "string") errorMessage = d;
-      else if (Array.isArray(d))
-        errorMessage = d
-          .map((item) =>
-            item && typeof item === "object"
-              ? (item as { msg?: string }).msg || JSON.stringify(item)
-              : String(item)
-          )
-          .join("; ");
-    } catch {}
-    throw new Error(`${errorMessage} (${response.status})`);
-  }
-  if (response.status === 204) return {} as T;
   return response.json() as Promise<T>;
 }
 
@@ -464,97 +426,12 @@ export async function listRoundJudges(roundId: string): Promise<JudgeAssignment[
 }
 
 export async function autoAssignJudges(
-  eventId: string,
+  roundId: string,
   judgesPerTeam: number = 2
-): Promise<{ message: string; approval_id: string }> {
-  return apiFetch<{ message: string; approval_id: string }>(
-    `/judges/${eventId}/auto-assign?judges_per_team=${judgesPerTeam}`,
+): Promise<{ success: boolean; assignments: JudgeAssignment[] }> {
+  return apiFetch<{ success: boolean; assignments: JudgeAssignment[] }>(
+    `/judges/auto-assign/${roundId}?judges_per_team=${judgesPerTeam}`,
     { method: "POST" }
-  );
-}
-
-// ─── DELETE OPERATIONS ───────────────────────────────────────────────────────
-
-export async function deleteParticipant(
-  eventId: string,
-  participantId: string
-): Promise<void> {
-  return apiFetch<void>(`/participants/${eventId}/${participantId}`, {
-    method: "DELETE",
-  });
-}
-
-export async function deleteJudge(
-  eventId: string,
-  judgeId: string
-): Promise<void> {
-  return apiFetch<void>(`/judges/${eventId}/${judgeId}`, {
-    method: "DELETE",
-  });
-}
-
-export async function deleteTeam(
-  eventId: string,
-  teamId: string
-): Promise<void> {
-  return apiFetch<void>(`/teams/${eventId}/${teamId}`, {
-    method: "DELETE",
-  });
-}
-
-export async function deleteRound(
-  eventId: string,
-  roundId: string
-): Promise<void> {
-  return apiFetch<void>(`/rounds/${eventId}/${roundId}`, {
-    method: "DELETE",
-  });
-}
-
-// ─── CSV UPLOADS ─────────────────────────────────────────────────────────────
-
-export async function uploadParticipantCSV(
-  eventId: string,
-  file: File
-): Promise<{ message: string; count: number }> {
-  const form = new FormData();
-  form.append("file", file);
-  return apiFetchForm<{ message: string; count: number }>(
-    `/participants/${eventId}/upload-csv`,
-    form
-  );
-}
-
-export async function uploadJudgeCSV(
-  eventId: string,
-  file: File
-): Promise<{ message: string; count: number }> {
-  const form = new FormData();
-  form.append("file", file);
-  return apiFetchForm<{ message: string; count: number }>(
-    `/judges/${eventId}/upload-csv`,
-    form
-  );
-}
-
-// ─── APPROVALS ───────────────────────────────────────────────────────────────
-
-export async function listApprovals(eventId: string) {
-  return apiFetch<import("@/types").Approval[]>(`/approvals/${eventId}`);
-}
-
-export async function reviewApproval(
-  eventId: string,
-  approvalId: string,
-  action: "approved" | "rejected" | "revised",
-  reviewNotes?: string
-) {
-  return apiFetch<import("@/types").Approval>(
-    `/approvals/${eventId}/${approvalId}/review`,
-    {
-      method: "POST",
-      body: JSON.stringify({ action, review_notes: reviewNotes ?? null }),
-    }
   );
 }
 
@@ -600,6 +477,160 @@ export async function listAIEvents(): Promise<Event[]> {
 
 export async function getAIEvent(hash: string): Promise<EventConfig> {
   return apiFetch<EventConfig>(`/ai/events/${hash}`);
+}
+
+// ─── APPROVALS ────────────────────────────────────────────────────────────────
+
+export async function listPendingApprovals(
+  eventId: string
+): Promise<ApprovalRequest[]> {
+  return apiFetch<ApprovalRequest[]>(`/approvals/${eventId}`);
+}
+
+export async function listApprovalHistory(
+  eventId: string
+): Promise<ApprovalRequest[]> {
+  return apiFetch<ApprovalRequest[]>(`/approvals/${eventId}/history`);
+}
+
+export async function getApproval(
+  eventId: string,
+  approvalId: string
+): Promise<ApprovalRequest> {
+  return apiFetch<ApprovalRequest>(`/approvals/${eventId}/${approvalId}`);
+}
+
+export async function reviewApproval(
+  eventId: string,
+  approvalId: string,
+  body: ApprovalActionBody
+): Promise<ApprovalRequest> {
+  return apiFetch<ApprovalRequest>(
+    `/approvals/${eventId}/${approvalId}/review`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    }
+  );
+}
+
+// ─── NOTIFICATIONS ────────────────────────────────────────────────────────────
+
+export async function listMyNotifications(
+  unreadOnly: boolean = false
+): Promise<Notification[]> {
+  return apiFetch<Notification[]>(
+    `/notifications${unreadOnly ? "?unread_only=true" : ""}`
+  );
+}
+
+export async function markNotificationRead(
+  notificationId: string
+): Promise<{ message?: string }> {
+  return apiFetch<{ message?: string }>(
+    `/notifications/${notificationId}/read`,
+    { method: "POST" }
+  );
+}
+
+// ─── ANOMALIES ────────────────────────────────────────────────────────────────
+
+export async function listAnomalies(eventId: string): Promise<Anomaly[]> {
+  return apiFetch<Anomaly[]>(`/anomalies/${eventId}`);
+}
+
+export async function resolveAnomaly(
+  eventId: string,
+  anomalyId: string
+): Promise<{ message: string }> {
+  return apiFetch<{ message: string }>(
+    `/anomalies/${eventId}/${anomalyId}/resolve`,
+    { method: "POST" }
+  );
+}
+
+// ─── DELETE OPERATIONS ───────────────────────────────────────────────────────
+
+export async function deleteParticipant(
+  eventId: string,
+  participantId: string
+): Promise<void> {
+  return apiFetch<void>(`/participants/${eventId}/${participantId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function deleteJudge(
+  eventId: string,
+  judgeId: string
+): Promise<void> {
+  return apiFetch<void>(`/judges/${eventId}/${judgeId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function deleteTeam(
+  eventId: string,
+  teamId: string
+): Promise<void> {
+  return apiFetch<void>(`/teams/${eventId}/${teamId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function deleteRound(
+  eventId: string,
+  roundId: string
+): Promise<void> {
+  return apiFetch<void>(`/rounds/${eventId}/${roundId}`, {
+    method: "DELETE",
+  });
+}
+
+// ─── BULK CSV IMPORT ──────────────────────────────────────────────────────────
+
+async function uploadCsv<T>(path: string, file: File): Promise<T> {
+  // The auth header needs to come from getAuthHeaders, but we must NOT set
+  // Content-Type — the browser sets the multipart boundary itself.
+  const headers = await getAuthHeaders();
+  const cleaned: Record<string, string> = {};
+  for (const [k, v] of Object.entries(headers as Record<string, string>)) {
+    if (k.toLowerCase() !== "content-type") cleaned[k] = v;
+  }
+  const form = new FormData();
+  form.append("file", file);
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: cleaned,
+    body: form,
+  });
+  if (!response.ok) {
+    let msg = `Upload failed: ${response.status}`;
+    try {
+      const errData = (await response.json()) as { detail?: unknown };
+      const d = errData.detail;
+      if (typeof d === "string") msg = d;
+      else if (d) msg = JSON.stringify(d);
+    } catch {
+      // body wasn't JSON
+    }
+    throw new Error(msg);
+  }
+  return response.json() as Promise<T>;
+}
+
+export async function uploadParticipantsCsv(
+  eventId: string,
+  file: File
+): Promise<{ message: string; count: number }> {
+  return uploadCsv(`/participants/${eventId}/upload-csv`, file);
+}
+
+export async function uploadJudgesCsv(
+  eventId: string,
+  file: File
+): Promise<{ message: string; count: number }> {
+  return uploadCsv(`/judges/${eventId}/upload-csv`, file);
 }
 
 // ─── Utility ─────────────────────────────────────────────────────────────────

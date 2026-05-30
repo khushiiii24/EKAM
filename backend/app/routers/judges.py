@@ -152,7 +152,10 @@ async def assign_judge(
     "/{event_id}",
     response_model=List[Judge],
     dependencies=[
-        Depends(require_actor_type(["organizer"])),
+        # Judges need to call this against every event in order to discover
+        # which ones they're invited to (the /judge/assignments dashboard
+        # matches by email). Participants are intentionally still blocked.
+        Depends(require_actor_type(["organizer", "judge"])),
         Depends(require_event_access("event_id"))
     ]
 )

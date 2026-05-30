@@ -4,7 +4,9 @@ EKAM Auth Router
 Handles all authentication endpoints.
 """
 
-from fastapi import APIRouter, Depends, Request
+import traceback
+
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -50,19 +52,18 @@ router = APIRouter(
 @router.post("/login", response_model=LoginResponse)
 async def login(
     request: Request,
-    body: _LoginBody = None,
+    body: _LoginBody | None = None,
     token_data: dict = Depends(verify_firebase_only),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """
-    POST /auth/login — frontend-compatible organizer login.
-    Send the Firebase ID token as Authorization: Bearer <token>.
-    Optionally include { name, role } in the JSON body (used during signup).
-    Returns EKAM JWT + user profile fields.
-    """
-    import traceback
-    from fastapi import HTTPException as _HTTPException
+    POST /auth/login — frontend-compatible login for any role.
 
+    - Send the Firebase ID token as Authorization: Bearer <token>.
+    - Optionally include { name, role } in the JSON body (used during signup
+      to pick the user's role; allowed values: organizer, participant, judge).
+    - Returns an EKAM JWT plus the user profile (name, email, role, ...).
+    """
     try:
         ip_address = request.client.host if request.client else None
         user_agent = request.headers.get("user-agent")
@@ -75,11 +76,11 @@ async def login(
             user_agent=user_agent,
             display_name=display_name,
         )
-    except _HTTPException:
+    except HTTPException:
         raise
     except Exception as exc:
         traceback.print_exc()
-        raise _HTTPException(
+        raise HTTPException(
             status_code=500,
             detail=f"Login failed: {type(exc).__name__}: {exc}",
         )
@@ -96,9 +97,6 @@ async def firebase_login(
     The ID token must be sent in the Authorization header as Bearer token.
     This also creates a JWT session.
     """
-    import traceback
-    from fastapi import HTTPException
-
     try:
         # 1. Sync Firebase user to local DB
         user = await login_service(db, token_data)

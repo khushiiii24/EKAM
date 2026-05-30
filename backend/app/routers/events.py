@@ -97,18 +97,29 @@ async def update_event(
     db: AsyncSession = Depends(get_db)
 ):
     """Update an event."""
+    import traceback
+
     if not auth.can_access_event(str(event_id)):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No event access"
         )
-        
-    return await update_event_service(
-        db,
-        event_id,
-        event_in,
-        auth.entity
-    )
+
+    try:
+        return await update_event_service(
+            db,
+            event_id,
+            event_in,
+            auth.entity,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"update_event failed: {type(e).__name__}: {e}",
+        )
 
 
 @router.delete(
